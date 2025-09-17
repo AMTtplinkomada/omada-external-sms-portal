@@ -1,0 +1,153 @@
+# config.py
+
+# SMS провайдер
+SMS_API_URL = "api.mobizon.kz"  #
+SMS_API_KEY = "kzb33b0ddfc725091d8e2ab37dc1d2292bf6aa0dc8c4565b0dce40d4522d6d2fb393b1"
+
+# Omada
+OMADA_AUTH_URL = "http://46.8.109.28:433/portal/auth"
+
+# Время жизни кода в секундах
+CODE_EXPIRATION = 300  # 5 минут
+
+# SSL (если будешь использовать)
+SSL_CERT_FILE = "cert.pem"
+SSL_KEY_FILE = "key.pem"
+
+sms_provider.py
+
+import requests
+import config
+
+def send_sms(phone: str, code: str) -> bool:
+    message = f"Ваш код доступа: {code}"
+    data = {
+        "to": phone,
+        "message": message,
+        "api_key": config.SMS_API_KEY
+    }
+    try:
+        resp = requests.post(config.SMS_API_URL, json=data, timeout=10)
+        if resp.status_code == 200:
+            return True
+        else:
+            print("SMS API error:", resp.status_code, resp.text)
+            return False
+    except Exception as e:
+        print("Exception sending SMS:", e)
+        return False
+
+token_handler.py
+
+import time
+import random
+import string
+import config
+
+codes = {}  # телефон -> (код, timestamp)
+
+def generate_code(length: int = 6) -> str:
+    return "".join(random.choices(string.digits, k=length))
+
+def store_code(phone: str, code: str):
+    codes[phone] = (code, time.time())
+
+def verify_code(phone: str, code: str) -> bool:
+    rec = codes.get(phone)
+    if not rec:
+        return False
+    stored_code, ts = rec
+    if (time.time() - ts) > config.CODE_EXPIRATION:
+        del codes[phone]
+        return False
+    if stored_code == code:
+        del codes[phone]
+        return True
+    return False
+
+app.py
+
+from flask import Flask, request, render_template, redirect
+import config
+from sms_provider import send_sms
+from token_handler import generate_code, store_code, verify_code
+
+app = Flask(__name__)
+
+@app.route('/', methods=['GET'])
+def login():
+    tok = request.args.get('tok')
+    if not tok:
+        return "Ошибка: нет токена", 400
+    return render_template('login.html', tok=tok)
+
+@app.route('/send_code', methods=['POST'])
+def send_code():
+    phone = request.form.get('phone')
+    tok = request.form.get('tok')
+    if not phone or not tok:
+        return "Ошибка: недостаточно данных", 400
+
+    code = generate_code()
+    store_code(phone, code)
+    ok = send_sms(phone, code)
+    if not ok:
+        return "Не удалось отправить SMS", 500
+    return render_template('verify.html', phone=phone, tok=tok)
+
+@app.route('/verify', methods=['POST'])
+def verify():
+    phone = request.form.get('phone')
+    code = request.form.get('code')
+    tok = request.form.get('tok')
+    if not all([phone, code, tok]):
+        return "Ошибка: недостаточно данных", 400
+    if verify_code(phone, code):
+        return redirect(f"{config.OMADA_AUTH_URL}?tok={tok}")
+    else:
+        return render_template('verify.html', phone=phone, tok=tok, error="Неверный код или истёк срок")
+        
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=443, ssl_context=(config.SSL_CERT_FILE, config.SSL_KEY_FILE))
+
+templates/login.html
+
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Вход через SMS</title>
+</head>
+<body>
+  <h2>Введите номер телефона</h2>
+  <form action="/send_code" method="post">
+    <input type="text" name="phone" placeholder="+7XXXXXXXXXX" required>
+    <input type="hidden" name="tok" value="{{ tok }}">
+    <button type="submit">Получить код</button>
+  </form>
+</body>
+</html>
+
+templates/verify.html
+
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Подтвердите код</title>
+</head>
+<body>
+  <h2>Введите код из SMS</h2>
+  {% if error %}
+    <p style="color:red">{{ error }}</p>
+  {% endif %}
+  <form action="/verify" method="post">
+    <input type="hidden" name="phone" value="{{ phone }}">
+    <input type="hidden" name="tok" value="{{ tok }}">
+    <input type="text" name="code" placeholder="Код" required>
+    <button type="submit">Проверить</button>
+  </form>
+</body>
+</html>
+
+README.md 
