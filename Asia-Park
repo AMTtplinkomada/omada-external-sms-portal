@@ -1,3 +1,10 @@
+requirements.txt
+
+flask
+requests
+
+config.py
+
 # config.py
 
 # SMS провайдер
