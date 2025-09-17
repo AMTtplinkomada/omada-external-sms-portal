@@ -1,16 +1,16 @@
 # config.py
 
 # SMS провайдер
-SMS_API_URL = "api.mobizon.kz"  #
+SMS_API_URL = "api.mobizon.kz"  
 SMS_API_KEY = "kzb33b0ddfc725091d8e2ab37dc1d2292bf6aa0dc8c4565b0dce40d4522d6d2fb393b1"
 
 # Omada
 OMADA_AUTH_URL = "http://46.8.109.28:433/portal/auth"
 
 # Время жизни кода в секундах
-CODE_EXPIRATION = 300  # 5 минут
+CODE_EXPIRATION = 300  
 
-# SSL (если будешь использовать)
+# SSL 
 SSL_CERT_FILE = "cert.pem"
 SSL_KEY_FILE = "key.pem"
 
